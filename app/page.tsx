@@ -7,11 +7,11 @@ import { BookReader } from "@/components/BookReader";
 import { AdminPanel } from "@/components/AdminPanel";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
-import { AuthPaywall } from "@/components/AuthPaywall";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 type View = 'home'|'reading'|'admin';
 
+// DB row type
 type EssayRow = {
   id: string;
   title: string;
@@ -77,9 +77,6 @@ export default function HomePage() {
   const [adminPassInput, setAdminPassInput] = useState("");
   const [adminError, setAdminError] = useState("");
   const [adminChecking, setAdminChecking] = useState(false);
-  // Reader auth - NEW
-  const [user, setUser] = useState<any>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -91,48 +88,10 @@ export default function HomePage() {
         setReadHistory(JSON.parse(localStorage.getItem('oooii_read_history') || '[]'));
         setLikes(JSON.parse(localStorage.getItem('oooii_likes') || '{}'));
         setLikeCounts(JSON.parse(localStorage.getItem('oooii_like_counts') || '{}'));
-        // lifetime from local fallback, will be overwritten by profile if logged in
-        if (localStorage.getItem('oooii_lifetime') === 'true') setIsLifetime(true);
+        setIsLifetime(localStorage.getItem('oooii_lifetime') === 'true');
       } catch {}
 
       if (configured && supabase) {
-        // Check auth session
-        try {
-          const { data: sess } = await supabase.auth.getSession();
-          if (sess.session?.user) {
-            setUser(sess.session.user);
-            setUserEmail(sess.session.user.email || null);
-            // fetch profile lifetime
-            const { data: prof } = await supabase.from('profiles').select('is_lifetime').eq('id', sess.session.user.id).single();
-            if (prof?.is_lifetime) setIsLifetime(true);
-          }
-          // listen auth changes
-          const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (session?.user) {
-              setUser(session.user);
-              setUserEmail(session.user.email || null);
-              const { data: prof } = await supabase.from('profiles').select('is_lifetime').eq('id', session.user.id).single();
-              if (prof?.is_lifetime) setIsLifetime(true);
-              else {
-                // if not lifetime but had local lifetime false, keep false
-                const { data: prof2 } = await supabase.from('profiles').select('is_lifetime').eq('id', session.user.id).single();
-                if (!prof2?.is_lifetime) {
-                  // keep current isLifetime if already true from previous, else false
-                  // we already handled
-                }
-              }
-            } else {
-              setUser(null);
-              setUserEmail(null);
-              // check local fallback
-              try {
-                if (localStorage.getItem('oooii_lifetime') !== 'true') setIsLifetime(false);
-              } catch {}
-            }
-          });
-          // cleanup not needed for simplicity
-        } catch {}
-
         const { data, error } = await supabase
           .from('essays')
           .select('*')
@@ -142,12 +101,15 @@ export default function HomePage() {
           const mapped = (data as EssayRow[]).map(rowToEssay);
           setEssays(mapped);
         } else if (!error && data && data.length === 0) {
+          console.log("Supabase empty, using samples.");
           try {
             const custom = JSON.parse(localStorage.getItem('oooii_essays_custom') || '[]');
             if (custom.length) {
               setEssays(prev => [...custom, ...prev].sort((a,b)=>b.createdAt-a.createdAt));
             }
           } catch {}
+        } else {
+          console.error("Supabase fetch error:", error);
         }
       } else {
         try {
@@ -160,10 +122,10 @@ export default function HomePage() {
     load();
   }, []);
 
-  useEffect(() => { try{ localStorage.setItem('oooii_free_picks', JSON.stringify(freePicks)); }catch{} }, [freePicks]);
-  useEffect(() => { try{ localStorage.setItem('oooii_read_history', JSON.stringify(readHistory)); }catch{} }, [readHistory]);
-  useEffect(() => { try{ localStorage.setItem('oooii_likes', JSON.stringify(likes)); }catch{} }, [likes]);
-  useEffect(() => { try{ localStorage.setItem('oooii_like_counts', JSON.stringify(likeCounts)); }catch{} }, [likeCounts]);
+  useEffect(() => { localStorage.setItem('oooii_free_picks', JSON.stringify(freePicks)); }, [freePicks]);
+  useEffect(() => { localStorage.setItem('oooii_read_history', JSON.stringify(readHistory)); }, [readHistory]);
+  useEffect(() => { localStorage.setItem('oooii_likes', JSON.stringify(likes)); }, [likes]);
+  useEffect(() => { localStorage.setItem('oooii_like_counts', JSON.stringify(likeCounts)); }, [likeCounts]);
 
   useEffect(() => {
     try {
@@ -256,24 +218,6 @@ export default function HomePage() {
     }
   };
 
-  const handleSignOut = async () => {
-    if (supabase) await supabase.auth.signOut();
-    setUser(null);
-    setUserEmail(null);
-    setIsLifetime(false);
-    try { localStorage.removeItem('oooii_lifetime'); } catch {}
-  };
-
-  const handleAuth = (u: any) => {
-    setUser(u);
-    setUserEmail(u?.email || null);
-  };
-
-  const handleSubscribed = () => {
-    setIsLifetime(true);
-    try { localStorage.setItem('oooii_lifetime','true'); } catch {}
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f6efe2] flex items-center justify-center">
@@ -296,12 +240,14 @@ export default function HomePage() {
           onMarkUnread={()=>{ setReadHistory(prev=>prev.filter(x=>x!==currentEssay.id)); setView('home'); }}
         />
         {showPaywall && (
-          <AuthPaywall 
-            freePicks={freePicks.length}
-            onClose={()=>setShowPaywall(false)}
-            onSubscribed={handleSubscribed}
-            onAuth={handleAuth}
-          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur">
+            <div className="paper rounded-[20px] border border-[#e9ddd0] p-8 max-w-[440px] text-center book-shadow">
+              <h3 className="serif-head text-[26px] font-bold">You have chosen 5 free chapters</h3>
+              <p className="text-[13px] text-[#6b5a4a] mt-2">Unlock lifetime forever — one payment, daily newest first.</p>
+              <button onClick={()=>{ setIsLifetime(true); localStorage.setItem('oooii_lifetime','true'); setShowPaywall(false); }} className="mt-5 w-full py-3 rounded-full bg-[#1a1a1a] text-white text-[12px] uppercase">Unlock Lifetime $29 — Demo</button>
+              <button onClick={()=>setShowPaywall(false)} className="mt-3 text-[11px] uppercase text-[#9a8470]">Close</button>
+            </div>
+          </div>
         )}
       </>
     );
@@ -334,7 +280,7 @@ export default function HomePage() {
     if (!isAdminAuthed) {
       return (
         <div className="min-h-screen bg-[#f6efe2]">
-          <Header freePicks={freePicks} isLifetime={isLifetime} onNav={(v)=>setView(v as any)} userEmail={userEmail} onSignOut={handleSignOut} onSignInClick={()=>setShowPaywall(true)} />
+          <Header freePicks={freePicks} isLifetime={isLifetime} onNav={(v)=>setView(v as any)} />
           <div className="max-w-[400px] mx-auto px-4 py-20">
             <button onClick={()=>setView('home')} className="mb-6 px-4 py-2 rounded-full bg-[#1a1a1a] text-white text-[11px] uppercase">← Back to Library</button>
             <div className="paper rounded-[16px] border border-[#e9ddd0] p-6">
@@ -352,6 +298,7 @@ export default function HomePage() {
               <button onClick={handleAdminLogin} disabled={adminChecking} className="mt-4 w-full py-3 rounded-full bg-[#1a1a1a] text-white text-[12px] uppercase tracking-[0.16em] disabled:opacity-50">
                 {adminChecking ? 'Checking...' : 'Unlock Admin'}
               </button>
+              <p className="mt-3 text-[10px] text-[#9a8470]">Set ADMIN_PASSWORD in Vercel → Settings → Environment Variables (Secret, not NEXT_PUBLIC_)</p>
             </div>
           </div>
           <Footer onNav={setView} />
@@ -361,14 +308,14 @@ export default function HomePage() {
 
     return (
       <div className="min-h-screen bg-[#f6efe2]">
-        <Header freePicks={freePicks} isLifetime={isLifetime} onNav={(v)=>setView(v as any)} userEmail={userEmail} onSignOut={handleSignOut} onSignInClick={()=>setShowPaywall(true)} />
+        <Header freePicks={freePicks} isLifetime={isLifetime} onNav={(v)=>setView(v as any)} />
         <div className="max-w-[900px] mx-auto px-4">
           <div className="flex gap-2">
             <button onClick={()=>setView('home')} className="mt-4 px-4 py-2 rounded-full bg-[#1a1a1a] text-white text-[11px] uppercase">← Back to Library</button>
             <button onClick={()=>{ setIsAdminAuthed(false); try{ sessionStorage.removeItem('oooii_admin_authed'); }catch{} }} className="mt-4 px-4 py-2 rounded-full border border-[#e9ddd0] bg-[#fdf6ec] text-[11px] uppercase">Lock Admin</button>
           </div>
           <div className={`mt-3 p-3 rounded-[12px] border text-[11px] ${isSupabase ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-            {isSupabase ? '✓ Connected to Supabase — uploads go live to all readers worldwide' : '⚠ Local mode'}
+            {isSupabase ? '✓ Connected to Supabase — uploads go live to all readers worldwide' : '⚠ Local mode — add Supabase keys in Vercel to make uploads live for everyone (see README)'}
           </div>
         </div>
         <AdminPanel essays={essays} onAdd={addEssay} onDelete={deleteEssay} onUpdate={updateEssay} />
@@ -379,7 +326,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#f6efe2]">
-      <Header freePicks={freePicks} isLifetime={isLifetime} onNav={(v)=>setView(v as any)} userEmail={userEmail} onSignOut={handleSignOut} onSignInClick={()=>setShowPaywall(true)} />
+      <Header freePicks={freePicks} isLifetime={isLifetime} onNav={(v)=>setView(v as any)} />
       
       <div className="max-w-[1180px] mx-auto px-4 py-8">
         {todayEssay && (
@@ -402,40 +349,48 @@ export default function HomePage() {
             <h3 className="serif-head text-[22px] font-bold">Unread For You • {unreadEssays.length} waiting</h3>
             <span className="text-[11px] text-[#9a8470]">{newEssays.length} NEW • {readHistory.length} READ</span>
           </div>
-          <div className="mt-4 flex gap-2 flex-wrap">
-            <button onClick={()=>setFilter('all')} className={`px-4 py-2 rounded-full text-[11px] uppercase border ${filter==='all'?'bg-[#1a1a1a] text-white border-[#1a1a1a]':'bg-[#fdf6ec] border-[#e9ddd0]'}`}>All</button>
-            <button onClick={()=>setFilter('unread')} className={`px-4 py-2 rounded-full text-[11px] uppercase border ${filter==='unread'?'bg-[#1a1a1a] text-white border-[#1a1a1a]':'bg-[#fdf6ec] border-[#e9ddd0]'}`}>Unread</button>
-            <button onClick={()=>setFilter('new')} className={`px-4 py-2 rounded-full text-[11px] uppercase border ${filter==='new'?'bg-[#1a1a1a] text-white border-[#1a1a1a]':'bg-[#fdf6ec] border-[#e9ddd0]'}`}>New</button>
-            <button onClick={()=>setFilter('read')} className={`px-4 py-2 rounded-full text-[11px] uppercase border ${filter==='read'?'bg-[#1a1a1a] text-white border-[#1a1a1a]':'bg-[#fdf6ec] border-[#e9ddd0]'}`}>Read</button>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." className="ml-2 px-4 py-2 rounded-full border border-[#e9ddd0] bg-[#fdf6ec] text-[11px] w-[180px]" />
-          </div>
+          {unreadEssays.length===0 ? <p className="mt-3 text-[13px] text-[#9a8470] p-4 rounded-[12px] bg-[#fdf6ec] border border-[#e9ddd0]">You are all caught up. Explore full library below.</p> : (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+              {unreadEssays.slice(0,6).map(e=> (
+                <EssayCard key={e.id} essay={{...e, likes: likeCounts[e.id] || e.likes}} isRead={false} isNew={Date.now()-e.createdAt<72*3600*1000} isFreePick={freePicks.includes(e.id)} onOpen={()=>openEssay(e.id)} />
+              ))}
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map(essay => (
-            <EssayCard 
-              key={essay.id} 
-              essay={essay} 
-              isRead={readHistory.includes(essay.id)} 
-              isNew={Date.now()-essay.createdAt < 72*3600*1000}
-              isLiked={!!likes[essay.id]}
-              likeCount={likeCounts[essay.id] || essay.likes}
-              onOpen={()=>openEssay(essay.id)}
-              onLike={()=>handleLike(essay.id)}
-            />
-          ))}
+        <div>
+          <div className="flex flex-wrap gap-3 items-center justify-between">
+            <h3 className="serif-head text-[22px] font-bold">Full Library — Newest First</h3>
+            <div className="flex gap-2">
+              {(['all','unread','new','read'] as const).map(f=>(
+                <button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1.5 rounded-full text-[11px] uppercase border ${filter===f ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[#fdf6ec] border-[#e9ddd0] text-[#6b5a4a]'}`}>{f}</button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 flex gap-3">
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search essays..." className="flex-1 px-4 py-2.5 rounded-full border border-[#e9ddd0] bg-[#fdf6ec] text-[13px]" />
+            <span className="text-[11px] text-[#9a8470] py-2.5">{filtered.length} essays • sorted newest first</span>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-5">
+            {filtered.slice(0,100).map(e=>(
+              <EssayCard key={e.id} essay={{...e, likes: likeCounts[e.id] || e.likes}} isRead={readHistory.includes(e.id)} isNew={Date.now()-e.createdAt<72*3600*1000} isFreePick={freePicks.includes(e.id)} onOpen={()=>openEssay(e.id)} />
+            ))}
+          </div>
         </div>
       </div>
 
       <Footer onNav={setView} />
 
       {showPaywall && (
-        <AuthPaywall 
-          freePicks={freePicks.length}
-          onClose={()=>setShowPaywall(false)}
-          onSubscribed={handleSubscribed}
-          onAuth={handleAuth}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur">
+          <div className="paper rounded-[20px] border border-[#e9ddd0] p-8 max-w-[440px] text-center book-shadow">
+            <h3 className="serif-head text-[26px] font-bold">You have chosen 5 free chapters</h3>
+            <p className="text-[13px] text-[#6b5a4a] mt-2">Free picks stay yours. Unlock lifetime — one payment $29, newest first forever.</p>
+            <button onClick={()=>{ setIsLifetime(true); localStorage.setItem('oooii_lifetime','true'); setShowPaywall(false); }} className="mt-5 w-full py-3 rounded-full bg-[#1a1a1a] text-white text-[12px] uppercase">Unlock Lifetime $29 — Demo</button>
+            <button onClick={()=>setShowPaywall(false)} className="mt-3 text-[11px] uppercase text-[#9a8470]">Close</button>
+          </div>
+        </div>
       )}
     </div>
   );
