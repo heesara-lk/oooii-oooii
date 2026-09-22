@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Playfair+Display:wght@700&display=swap');
+
+:root { --paper:#fdf6ec; }
+body { background:#f6efe2; color:#1a1a1a; font-family:'Lora', serif; }
+.logo { font-family:'Playfair Display', serif; }
+.serif-head { font-family:'Cormorant Garamond', serif; }
+.paper { background: var(--paper); }
+.book-shadow { box-shadow: 0 24px 48px -18px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.08); }
+.book-page-left { box-shadow: inset -12px 0 24px -12px rgba(0,0,0,0.15); }
+.book-page-right { box-shadow: inset 12px 0 24px -12px rgba(0,0,0,0.12); }
