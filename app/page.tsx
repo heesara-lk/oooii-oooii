@@ -50,22 +50,11 @@ export default function HomePage() {
         const sb = supabase;
         try {
           const { data: sessData } = await sb.auth.getSession();
-          if (!sessData.session?.user) {
-            try { localStorage.removeItem('oooii_lifetime'); } catch {}
-            setIsLifetime(false);
-          } else {
-            setUser(sessData.session.user);
-            setUserEmail(sessData.session.user.email || null);
-            const { data: prof } = await sb.from('profiles').select('is_lifetime').eq('id', sessData.session.user.id).single();
-            if (prof?.is_lifetime) { setIsLifetime(true); try { localStorage.setItem('oooii_lifetime','true'); } catch {} }
-          }
+          if (!sessData.session?.user) { try { localStorage.removeItem('oooii_lifetime'); } catch {} setIsLifetime(false); }
+          else { setUser(sessData.session.user); setUserEmail(sessData.session.user.email || null); const { data: prof } = await sb.from('profiles').select('is_lifetime').eq('id', sessData.session.user.id).single(); if (prof?.is_lifetime) { setIsLifetime(true); try { localStorage.setItem('oooii_lifetime','true'); } catch {} } }
           sb.auth.onAuthStateChange(async (_event, session) => {
-            if (session?.user) {
-              setUser(session.user); setUserEmail(session.user.email || null);
-              const { data: prof } = await sb.from('profiles').select('is_lifetime').eq('id', session.user.id).single();
-              if (prof?.is_lifetime) { setIsLifetime(true); try { localStorage.setItem('oooii_lifetime','true'); } catch {} }
-              else { setIsLifetime(false); try { localStorage.removeItem('oooii_lifetime'); } catch {} }
-            } else { setUser(null); setUserEmail(null); setIsLifetime(false); try { localStorage.removeItem('oooii_lifetime'); } catch {} }
+            if (session?.user) { setUser(session.user); setUserEmail(session.user.email || null); const { data: prof } = await sb.from('profiles').select('is_lifetime').eq('id', session.user.id).single(); if (prof?.is_lifetime) { setIsLifetime(true); try { localStorage.setItem('oooii_lifetime','true'); } catch {} } else { setIsLifetime(false); try { localStorage.removeItem('oooii_lifetime'); } catch {} } }
+            else { setUser(null); setUserEmail(null); setIsLifetime(false); try { localStorage.removeItem('oooii_lifetime'); } catch {} }
           });
         } catch {}
         const { data, error } = await sb.from('essays').select('*').order('created_at', { ascending: false });
