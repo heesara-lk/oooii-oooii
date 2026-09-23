@@ -153,8 +153,19 @@ export default function HomePage() {
 
   const openEssay = (id: string) => {
     const alreadyPicked = freePicks.includes(id);
-    if (!isLifetime && !alreadyPicked && freePicks.length >= 5) { setShowPaywall(true); return; }
-    if (!alreadyPicked && !isLifetime) setFreePicks(prev => [...prev, id]);
+    // Option B: 2 free before account (OTP), 5 total before pay
+    if (!alreadyPicked) {
+      if (!user && freePicks.length >= 2) { setShowPaywall(true); return; }
+      if (user && !isLifetime && freePicks.length >= 5) { setShowPaywall(true); return; }
+      if (!user && !isLifetime && freePicks.length >= 5) { setShowPaywall(true); return; } // fallback if not logged yet but reached 5 via localStorage bypass attempt
+    }
+    if (!alreadyPicked && !isLifetime) {
+      setFreePicks(prev => [...prev, id]);
+      // Update server count if logged in
+      if (supabase && user) {
+        supabase.from('profiles').update({ free_reads_used: freePicks.length + 1 }).eq('id', user.id).then(()=>{});
+      }
+    }
     if (!readHistory.includes(id)) setReadHistory(prev => [...prev, id]);
     setCurrentId(id);
     setView('reading');
